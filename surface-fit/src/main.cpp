@@ -34,7 +34,10 @@ int main( int argc, char** argv ) {
     Mat q;
     s.backSubst(I,q);
     cout<<q;
-    imshow("Orignal",z);
+    auto winSize = cv::Size(400, 300);
+    const string original = "Orignal";
+    imshow(original, z);
+    resizeWindow(original, winSize);
     cout<<q.at<double>(2,0);
     Mat background(z.rows,z.cols,CV_8UC1);
     for (int i=0;i<z.rows;i++)
@@ -45,8 +48,16 @@ int main( int argc, char** argv ) {
             quad+=q.at<double>(3,0)*x+q.at<double>(4,0)*y+q.at<double>(5,0);
             background.at<uchar>(i,j) = saturate_cast<uchar>(quad);
         }
-    imshow("Simulated background",background);
-    imshow("Difference", z-background);
+    const string simulated = "Simulated background";
+    imshow(simulated,background);
+    moveWindow(simulated, winSize.width * 2, 0);
+    resizeWindow(simulated, winSize);
+
+    const string difference = "Difference";
+    imshow(difference, z-background);
+    moveWindow(difference, 0, winSize.height * 2);
+    resizeWindow(difference, winSize);
+
     waitKey();
     return 0;
 }
