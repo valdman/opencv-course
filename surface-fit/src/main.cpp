@@ -1,4 +1,5 @@
 #include <iostream>
+#include <opencv2/imgproc.hpp>
 #include <opencv2/opencv.hpp>
 #include <opencv2/core.hpp>
 
@@ -14,24 +15,25 @@ char windowName[50] = "Polynomial surface fit";
 cv::Mat SurfaceFit( cv::Mat& TheImage ) {
     int Nrows = TheImage.rows;
     int Ncols = TheImage.cols;
-    int ImageType = TheImage.type();
     int Npixels = Nrows*Ncols;
-    int n=0;
     int r, c, cnt, i, j, k, MatVal, nCol;
     int Dim1, Dim2;
     int PO_2xp1 = cv::max((2 * PolyOrderX + 1), (2 * PolyOrderY + 1));
-    uint matSize = (PolyOrderX+1)*(PolyOrderY+1);
+    const uint matSize = (PolyOrderX+1)*(PolyOrderY+1);
 
     // Create the x, y, and z arrays from which the image to be fitted
-    double X[Npixels];
-    double Y[Npixels];
-    double Z[Npixels];
+    vector<double> X(Npixels);
+    vector<double> Y(Npixels);
+    vector<double> Z(Npixels);
+
     cnt = 0;
-    for(r=0; r<Nrows; r++) {
-        for(c=0; c<Ncols; c++) {
-            X[cnt] = c;
-            Y[cnt] = r;
-            Z[cnt] = TheImage.at<uchar>(r, c);
+    for(int r = 0; r < TheImage.rows; r++)
+    {
+        for(int c = 0; c < TheImage.cols; c++) {
+            X[cnt] = static_cast<double>(c);
+            Y[cnt] = static_cast<double>(r); 
+            auto pixel = int(TheImage.at<uchar>(r,c));
+            Z[cnt] = static_cast<double>(pixel);
             cnt++;
         }
     }
@@ -142,10 +144,13 @@ cv::Mat SurfaceFit( cv::Mat& TheImage ) {
     // Solve the linear system [XY] [P] = [Z] using the Jama.Matrix routines
 	// 	[A_mat] [x_vec] = [b_vec]
 	// (see example at   http://math.nist.gov/javanumerics/jama/doc/Jama/Matrix.html)
-	cv::Mat A_mat {2, 5, mattype, XY_mat};
-	cv::Mat b_vec {1, 10, mattype, Z_mat};
+	cv::Mat A_mat {matSize, matSize, CV_32F, &XY_mat};
+    std::cout << A_mat << endl;
+	cv::Mat b_vec {matSize, 1, CV_32F, &Z_mat};
+    std::cout << b_vec << endl;
 	cv::Mat x_vec;
-  cv::solve(A_mat, b_vec, x_vec);
+    cv::solve(A_mat, b_vec, x_vec);
+    std::cout << x_vec << endl;
 
 	// Place the Least Squares Fit results into the array Pfit
 	double Pfit[matSize];
@@ -170,6 +175,47 @@ cv::Mat SurfaceFit( cv::Mat& TheImage ) {
     return Gfit ;
 }
 
+cv::Mat ApplyFit( cv::Mat surfaceFit, cv::Mat& TheImage ) {
+    int c, p, t, iy, ix, cSlice;
+    int powy, powx;
+    double dtemp, ytemp;
+
+    int Nt = 1;
+    int Ny = TheImage.rows;
+    int Nx = TheImage.cols;
+
+    double TheImage_mean = cv::mean(TheImage).val[0];
+
+    // Create an image of the fitted surface
+    // Example:                
+    //    dtemp = (SurfFit[3][3]*y*y*y + SurfFit[2][3]*y*y + SurfFit[1][3]*y + SurfFit[0][3])*x*x*x;
+    //    dtemp += (SurfFit[3][2]*y*y*y + SurfFit[2][2]*y*y + SurfFit[1][2]*y + SurfFit[0][2])*x*x;
+    //    dtemp += (SurfFit[3][1]*y*y*y + SurfFit[2][1]*y*y + SurfFit[1][1]*y + SurfFit[0][1])*x;
+    //    dtemp += (SurfFit[3][0]*y*y*y + SurfFit[2][0]*y*y + SurfFit[1][0]*y + SurfFit[0][0]);
+    cv::Mat Svh {Ny, Nx, CV_8UC1, cv::Scalar(0)};
+    for(iy=0; iy<Ny; iy++) {
+        for(ix=0; ix<Nx; ix++) {
+            uchar& targetPixel = Svh.at<Vec3b>(iy, ix)[0];
+            // targetPixel -= TheImage_mean;
+            dtemp = 0;
+            // Determine the value of the fit at pixel iy,ix
+            for(powx=PolyOrderX; powx>=0; powx--) {
+                ytemp = 0;
+                for(powy=PolyOrderY; powy>=0; powy--) {
+                    double sf = surfaceFit.at<double>(powy, powx);
+                    double pw = cv::pow((double)iy,(double)powy);
+                    ytemp += sf * pw;
+                }
+                dtemp += ytemp * cv::pow((double)ix,(double)powx);
+            }
+            // Remember to add back the mean image value
+            uchar& v = Svh.at<uchar>(iy, ix);
+            v = (uchar)dtemp; // + TheImage_mean;
+        }
+    }
+
+    return Svh;
+}
 
 int main( int argc, char** argv ) {
   CommandLineParser parser( argc, argv, "{@input | ./tram.jpg | input image}" );
@@ -179,9 +225,11 @@ int main( int argc, char** argv ) {
     return -1;
   }
 
-  Mat grayscaleDefault;
+  Mat grayscaleDefault {colored.rows, colored.cols, CV_8UC1, cv::Scalar(0)};
   cvtColor(colored, grayscaleDefault, COLOR_BGR2GRAY);
-  imshow(windowName, SurfaceFit(grayscaleDefault));
+  auto surfacePolynom = SurfaceFit(grayscaleDefault);
+  auto fit = ApplyFit(surfacePolynom, grayscaleDefault);
+  imshow(windowName, fit);
   waitKey();
   return 0;
 }
