@@ -6,7 +6,7 @@ using namespace std;
 using namespace cv;
 
 int main( int argc, char** argv ) {
-    CommandLineParser parser( argc, argv, "{@input | ./tram.jpg | input image}" );
+    CommandLineParser parser( argc, argv, "{@input | ./tram.jpeg | input image}" );
     Mat colored = imread(parser.get<string>("@input"));
     if (colored.empty()) {
         cout << "Error loading image" << endl;
