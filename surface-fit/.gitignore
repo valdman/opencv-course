@@ -5,3 +5,4 @@ out
 cmake_install.cmake
 Makefile
 *.bin
+*.jpg

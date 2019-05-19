@@ -1,9 +1,13 @@
 #include <iostream>
+#include<sstream>
 #include <opencv2/opencv.hpp>
 #include <opencv2/core.hpp>
 
 using namespace std;
 using namespace cv;
+
+double a, b;
+Mat imageGrey;
 
 double rastrigin(std::vector<double> argument, double slow = 1) {
    double evaluation = 0.0;
@@ -32,15 +36,56 @@ double win(std::vector<double> argument) {
     return reduction ? 255 : 0;
 }
 
+double modeSwitcher(std::vector<double> v, int mode) {
+    auto x = v[0],
+        y = v[1];
+    switch (mode) {
+    case 1:
+        return a * rastrigin(v) + b;
+    case 2:
+        return a * 300000 * sin((x)/350.0) * cos((y)/350.0) + b;
+    case 3:
+        return 2555555 * (x*x/(a*a)+y*y/(b*b));
+    case 4: 
+        return a * imageGrey.at<uchar>(x, y) + b;
+    default:
+        throw new invalid_argument("ivalidd mode argument value");
+    };
+}
+
 int main( int argc, char** argv ) {
-    CommandLineParser parser( argc, argv, "{@input | ./tram.jpeg | input image}" );
-    Mat colored = imread(parser.get<string>("@input"));
+    auto params =   "{image           | ./input.jpeg  | input image}"
+                    "{mode            |1              | surface type (1-4)}"
+                    "{a               |1              | first paramater of run}"
+                    "{b               |1              | second paramater of run}"
+                    "{write           |False          | write results to files}"
+                    "{help h usage ?  |               | print this message   }";
+    CommandLineParser parser( argc, argv, params);
+    if (parser.has("help")) {
+        parser.printMessage();
+        return 0;
+    }
+    if (!parser.check()) {
+        parser.printErrors();
+        return 1;
+    }
+    Mat colored = imread(parser.get<string>("image"));
+    auto mode = parser.get<int>("mode");
+    auto write = parser.get<bool>("write");
+    a = parser.get<double>("a");
+    b = parser.get<double>("b");
+
     if (colored.empty()) {
         cout << "Error loading image" << endl;
         return -1;
     }
+    if(mode > 4) {
+        cout << "Ivallid mode argument vaue (mode can be 1-4)" << endl;
+        return -1;
+    }
 
     Mat img {colored.rows, colored.cols, CV_8UC1, cv::Scalar(0)};
+    imageGrey = img;
     int rows = img.rows, cols = img.cols;
     cvtColor(colored, img, COLOR_BGR2GRAY);
 
@@ -57,7 +102,7 @@ int main( int argc, char** argv ) {
             X.at<double>(i*cols+j, 4) = y;
             X.at<double>(i*cols+j, 5) = 1;
             std::vector v{x, y};
-            auto val = 25 * rastrigin(v); // here goes func we need to interpolate
+            auto val = modeSwitcher(v, mode); // here goes func we need to interpolate
             Z.at<double>(i*cols+j, 0) = val;
         }
     SVD x(X);
@@ -66,7 +111,6 @@ int main( int argc, char** argv ) {
     cout<<A;
     auto winSize = cv::Size(400, 300);
     const string original = "Orignal";
-    imshow(original, img);
     resizeWindow(original, winSize);
     cout<<A.at<double>(2,0);
     Mat background(rows,cols,CV_8UC1);
@@ -79,15 +123,24 @@ int main( int argc, char** argv ) {
             background.at<uchar>(i,j) = saturate_cast<uchar>(quad);
         }
     const string simulated = "Simulated background";
-    imshow(simulated,background);
     moveWindow(simulated, winSize.width * 2, 0);
     resizeWindow(simulated, winSize);
 
     const string difference = "Difference";
-    imshow(difference, img-background);
     moveWindow(difference, 0, winSize.height * 2);
     resizeWindow(difference, winSize);
 
-    waitKey();
+    if(!write) {
+        imshow(original, img);
+        imshow(simulated,background);
+        imshow(difference, img-background);
+        waitKey();
+        return 0;
+    }
+
+    auto ext = ".jpg";
+    imwrite(original + ext, img);
+    imwrite(simulated + ext, background);
+    imwrite(difference + ext, img-background);
     return 0;
 }
